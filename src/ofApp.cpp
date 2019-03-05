@@ -5,31 +5,56 @@ using namespace ofxCv;
 using namespace cv;
 
 
+// HELPER FUNCTIONS
+
+float ease(float p) {
+    return 3*p*p - 2*p*p*p;
+}
+
+float ease(float p, float g) {
+    if (p < 0.5)
+        return 0.5 * pow(2*p, g);
+    else
+        return 1 - 0.5 * pow(2*(1 - p), g);
+}
+
+
 
 //--------------------------------------------------------------
 void ofApp::setup(){
 
     //ofSetVerticalSync(true);
     ofBackground(0);
+    ofSetFrameRate(60);
     
+    width = ofGetWidth();
+    height = ofGetHeight();
     
     //GUI SETUP
     gui.setup();
     gui.add(minArea.set("Min area", 10, 1, 100));
     gui.add(maxArea.set("Max area", 200, 1, 500));
-    gui.add(threshold.set("Threshold", 128, 0, 255));
+    gui.add(threshold.set("Threshold", 168, 0, 255));
     gui.add(holes.set("Holes", false));
     gui.add(fieldOfGlow.set("RangeOfInfluence", 10, 1, 40));
     gui.add(proximity.set("Proximity", 10, 5, 40));
     
+    // Particle GUI
+    gui.add(timeMult.set("timeMult", .12, .005, .5));
+    gui.add(scaleMult.set("ScaleMult", .25, .005, .5));
+    gui.add(radius.set("Radius", .9, .1, 5));
+    gui.add(numFrames.set("numFrames", 75, 60, 600));
+    //gui.add(gridScale.set("gridScale", 50, 20, 80));
+    gui.add(vScale.set("vScale", 0.01, 0.01, .5));
+    
     //Load Movie
     
-    movie.load("keys2.mov");
-    movie.play();
+//    movie.load("keys2.mov");
+//    movie.play();
 //
     //CAM FEED
-//    movie.setDeviceID(1);
-//    movie.setup(1280, 768);
+    movie.setDeviceID(1);
+    movie.setup(1280, 768);
 
     contourFinder.setMinAreaRadius(1);
     contourFinder.setMaxAreaRadius(100);
@@ -42,11 +67,56 @@ void ofApp::setup(){
     contourFinder.getTracker().setMaximumDistance(32);
     showLabels = true;
     
+    //Particle Setup
+    cols = 32;//round(width / gridScale);
+    rows = 22;//round(height / gridScale);
+    
+    null.set(0,0);
+    
+    flowField.resize(rows*cols);
+    
+    for(int i = 0; i< flowField.size(); i++){
+        flowField[i] = null;
+    }
+    
+    int num = 500;
+    p.assign(num, Particle());
+    resetParticles();
+    
+}
+
+// Reset Particles System !!
+//--------------------------------------------------------------
+void ofApp::resetParticles(){
+    
+    attractPoints.clear();
+//    for(int i = 0; i < 4; i++){
+//        attractPoints.push_back( ofPoint( ofMap(i, 0, 4, 100, ofGetWidth()-100) , ofRandom(100, ofGetHeight()-100) ) );
+//    }
+    
+    attractPointsWithMovement = contPoints;
+    
+    for(unsigned int i = 0; i < p.size(); i++){
+        p[i].setAttractPoints(&attractPointsWithMovement);
+        p[i].reset();
+    }
 }
 
 //--------------------------------------------------------------
 void ofApp::update(){
-
+    
+    contPoints.clear();
+    
+    // Flow Fields Setup
+    
+//    cols = round(width / gridScale);
+//    rows = round(height / gridScale);
+    
+    // ------------------
+    
+    
+    // Contour FInder Setup Area !!
+    
     // Video Frames Updates
     //movie.update();
     movie.update();
@@ -67,19 +137,66 @@ void ofApp::update(){
         }
     }
     
+    
+    // ------------------
+    
 }
 
 //--------------------------------------------------------------
 void ofApp::draw(){
     
+    
+    // Flow Field Setup Area !!
+    float t = timeMult*ofGetFrameNum()/numFrames;
+    //int t = 1;
+    for (int y = 0; y < rows; y++){
+        for (int x = 0; x < cols; x++){
+            int index = x + y * cols;
+            float noiseF = ofMap(ofNoise(scaleMult*x,scaleMult*y,t),0,1,0,1);
+            float noiseF2 = ofMap(ofNoise(scaleMult*x,scaleMult*y,t),0,1,-1,1);
+            
+            float vx = 40*cos(noiseF);
+            float vy = 40*sin(noiseF);
+            float intensity = noiseF2; //0.5 + 1.5 * ease(noiseF2,3.5);
+            vx*=intensity;
+            vy*=intensity;
+            ofPoint flow;
+            flow.x = vx;
+            flow.y = vy;
+            flow.limit(vScale);
+            //flow.normalize();
+            flowField[index] = flow;
+            ofPushMatrix();
+            ofTranslate(x+x*40, y+y*40);
+            ofSetColor(55);
+            ofDrawLine(0,0,vx,vy);
+            //ofDrawBitmapString(ofToString(noiseF), 0, 0);
+            ofPopMatrix();
+        }
+    }
+    
+    
+    // Particle Drawing Area !!
+    
+    ofSetColor(255, 127);
+    
+    for(unsigned int i = 0; i < p.size(); i++){
+        
+        p[i].follow(flowField, 40, cols);
+        p[i].update();
+        p[i].draw();
+        p[i].edges();
+    }
+    
+    // Countour Finder Area !!
+    
     ofSetBackgroundAuto(showLabels);
     RectTracker& tracker = contourFinder.getTracker();
     
-    vector<glm::vec3> contPoints;
 
     if(showLabels) {
         ofSetColor(255);
-        movie.draw(0,0);
+        //movie.draw(0,0);
         ofDrawLine(10, 10, 100, 10);
         //movie.draw(0,0, 1280, 768);
         contourFinder.draw();
@@ -156,9 +273,9 @@ void ofApp::draw(){
     
     ofSetColor(255);
     //polyline drawing
-    ofPolyline shape(contPoints);
+    //ofPolyline shape(contPoints);
     ofSetLineWidth(2);
-    shape.draw();
+    //shape.draw();
     
     
    
@@ -180,8 +297,16 @@ void ofApp::draw(){
     */
     
     
+    // Particle Drawing Area
+    
+    
+    
+    attractPointsWithMovement = contPoints;
+    
+    ofDrawBitmapString(ofToString(ofGetFrameRate()), 20, 20);
     // Gui Draw
     gui.draw();
+    
     
 }
 
@@ -191,6 +316,7 @@ void ofApp::keyPressed(int key){
     
     if(key == ' ') {
         showLabels = !showLabels;
+        resetParticles();
     }
     
     
