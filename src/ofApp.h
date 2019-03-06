@@ -19,27 +19,33 @@ class ofApp : public ofBaseApp{
         void drawParticles();
 		void keyPressed(int key);
     
+        ofTrueTypeFont myFont;
     
         //float threshold;
         //ofVideoPlayer movie;
         ofVideoGrabber movie;
+    
+        ofImage imgThresh, imgBlur, imgInvert;
+    
         ofxCv::ContourFinder contourFinder;
         vector< vector<cv::Point> > quads;
         vector<int> sides;
-        bool showLabels;
+        bool showLabels, guiFlag, flowFieldFlag;
         vector <glm::vec3> contPoints;
+        string modeSelector;
     
     
         ofxPanel gui;
-        ofParameter<float> minArea, maxArea, threshold, fieldOfGlow, proximity;
+        ofParameter<float> minArea, maxArea, thresholdVal, fieldOfGlow, proximity;
+        ofParameter<int> blurAmount;
         ofParameter<bool> holes;
     
 //      vector <Node> myNodes;
     
     //  Particle Setup
         vector <Particle> p;
-        vector <ofPoint> attractPoints;
-        vector <ofPoint> attractPointsWithMovement;
+        vector <ofPoint> repulsePoints, attractPoints;
+        vector <ofPoint> repulsePointsWithMovement, attractPointsWithMovement;
     
         vector <ofPoint> flowField;
     

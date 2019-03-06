@@ -22,6 +22,8 @@ float ease(float p, float g) {
 
 //--------------------------------------------------------------
 void ofApp::setup(){
+    
+    myFont.load("GT-Zirkon-Book.ttf", 24, true, true);
 
     //ofSetVerticalSync(true);
     ofBackground(0);
@@ -29,12 +31,14 @@ void ofApp::setup(){
     
     width = ofGetWidth();
     height = ofGetHeight();
+    modeSelector == "0";
     
     //GUI SETUP
     gui.setup();
     gui.add(minArea.set("Min area", 10, 1, 100));
     gui.add(maxArea.set("Max area", 200, 1, 500));
-    gui.add(threshold.set("Threshold", 168, 0, 255));
+    gui.add(blurAmount.set("Blur", 5, 1, 100));
+    gui.add(thresholdVal.set("Threshold", 168, 0, 255));
     gui.add(holes.set("Holes", false));
     gui.add(fieldOfGlow.set("RangeOfInfluence", 10, 1, 40));
     gui.add(proximity.set("Proximity", 10, 5, 40));
@@ -45,7 +49,7 @@ void ofApp::setup(){
     gui.add(radius.set("Radius", .2, .1, 5));
     gui.add(numFrames.set("numFrames", 75, 60, 600));
     //gui.add(gridScale.set("gridScale", 50, 20, 80));
-    gui.add(vScale.set("vScale", 0.1, 0.1, 1));
+    gui.add(vScale.set("vScale", 0.05, 0.01, .5));
     
     //Load Movie
     
@@ -82,7 +86,7 @@ void ofApp::setup(){
         flowField[i] = null;
     }
     
-    int num = 500;
+    int num = 1000;
     p.assign(num, Particle());
     resetParticles();
     
@@ -92,10 +96,14 @@ void ofApp::setup(){
 //--------------------------------------------------------------
 void ofApp::resetParticles(){
     
+//    repulsePoints.clear();
+//    repulsePointsWithMovement.clear();
+    
     attractPoints.clear();
     attractPointsWithMovement.clear();
     
     for(unsigned int i = 0; i < p.size(); i++){
+        //p[i].setRepulsePoints(&repulsePointsWithMovement);
         p[i].setAttractPoints(&attractPointsWithMovement);
         p[i].reset();
     }
@@ -132,7 +140,7 @@ void ofApp::createFlowField(){
             flowField[index] = flow;
             ofPushMatrix();
             ofTranslate(x+x*20, y+y*20);
-            ofSetColor(55);
+            ofSetColor(25);
             ofDrawLine(0,0,vx,vy);
             //ofDrawBitmapString(ofToString(noiseF), 0, 0);
             ofPopMatrix();
@@ -145,11 +153,13 @@ void ofApp::createFlowField(){
 
 void ofApp::drawParticles(){
     
-    ofSetColor(255, 127);
+    ofSetColor(127, 127);
     
     for(unsigned int i = 0; i < p.size(); i++){
         
-        p[i].follow(flowField, 40, cols);
+        if(flowFieldFlag){
+            p[i].follow(flowField, 40, cols);
+        }
         p[i].update();
         p[i].draw();
         p[i].edges();
@@ -166,14 +176,30 @@ void ofApp::update(){
 
     movie.update();
     if(movie.isFrameNew()) {
-        blur(movie, 10);
+        
+        
+        blur(movie, blurAmount);
         contourFinder.setMinAreaRadius(minArea);
         contourFinder.setMaxAreaRadius(maxArea);
-        contourFinder.setThreshold(threshold);
+        contourFinder.setThreshold(thresholdVal);
         contourFinder.findContours(movie);
         contourFinder.setSortBySize(true);
         contourFinder.setSimplify(true);
         contourFinder.setFindHoles(holes);
+        
+        if(modeSelector == "0"){
+            ofxCv::copy(movie, imgBlur);
+            blur(imgBlur, blurAmount);
+            imgBlur.update();
+            
+            convertColor(imgBlur, imgThresh, CV_RGB2GRAY);
+            threshold(imgThresh, thresholdVal);
+            imgThresh.update();
+            
+            ofxCv::copy(imgThresh, imgInvert);
+            invert(imgInvert);
+            imgInvert.update();
+        }
         
         int n = contourFinder.size();
         quads.clear();
@@ -196,8 +222,17 @@ void ofApp::draw(){
     ofSetBackgroundAuto(showLabels);
     RectTracker& tracker = contourFinder.getTracker();
     
-
-    if(showLabels) {
+    
+    if(modeSelector == "0"){
+        ofBackground(0);
+        movie.draw(0,0,640,400);
+        imgBlur.draw(640,0,640,400);
+        imgThresh.draw(0,400,640,400);
+        imgInvert.draw(640,400,640,400); 
+        
+    }
+    else if(modeSelector == "1") {
+        ofBackground(0,225);
         createFlowField();
         drawParticles();
         ofSetColor(255);
@@ -209,10 +244,6 @@ void ofApp::draw(){
             
             ofPoint center = toOf(contourFinder.getCenter(i));  // Get Centers of the Shape
             contPoints.push_back(center);
-            
-            
-            float circleRadius;
-            ofVec2f circleCenter = toOf(contourFinder.getMinEnclosingCircle(i, circleRadius));
 
             //ofDrawCircle(circleCenter, circleRadius);
             
@@ -226,33 +257,42 @@ void ofApp::draw(){
             ofDrawLine(0, 0, velocity.x, velocity.y);
             ofPopMatrix();
             
+            
             // Proximity Check
-                for(int j = 0; j<contourFinder.size(); j++){
-                        ofPoint centerProximity = toOf(contourFinder.getCenter(j));
-                    
-                        float circleProximityRadius;
-                        ofVec2f circleProximityCenter = toOf(contourFinder.getMinEnclosingCircle(j, circleProximityRadius));
-                        float distance = center.distance(circleProximityCenter);
-                    
-                        if(distance < circleRadius + circleProximityRadius + proximity && i != j){
-                            float midX = (center.x+circleProximityCenter.x)/2;
-                            float midY = (center.y+circleProximityCenter.y)/2;
-                            ofSetColor(cyanPrint);
-                            ofNoFill();
-                            ofDrawCircle(midX, midY, distance);
-                            //string location = ofToString(i) + ":" + ofToString(j);
-                            ofDrawBitmapStringHighlight("Such Proximity", midX, midY, ofColor(cyanPrint), ofColor(255));
-                            ofSetColor(255);
-                        }
-                    }
+            
+            float circleRadius;
+            ofVec2f circleCenter = toOf(contourFinder.getMinEnclosingCircle(i, circleRadius));
+            
+            for(int j = 0; j<contourFinder.size(); j++){
+                ofPoint centerProximity = toOf(contourFinder.getCenter(j));
+                
+                float circleProximityRadius;
+                ofVec2f circleProximityCenter = toOf(contourFinder.getMinEnclosingCircle(j, circleProximityRadius));
+                float distance = center.distance(circleProximityCenter);
+                
+                if(distance < circleRadius + circleProximityRadius + proximity && i != j){
+                    float midX = (center.x+circleProximityCenter.x)/2;
+                    float midY = (center.y+circleProximityCenter.y)/2;
+                    ofSetColor(255,200);
+                    ofDrawCircle(midX, midY, distance);
+                    //string location = ofToString(i) + ":" + ofToString(j);
+//                    ofSetColor(255);
+//                    myFont.drawString("Such Proximity", midX, midY);
+                    ofSetColor(255);
+                }
+            }
             //Proximity Check End
             
             }
+        
+        
             
         }
-    else {
+    
+    else if(modeSelector == "2"){
         ofSetColor(255);
         ofBackground(0);
+        //myFont.drawString("Orientation", 100, 200);
         // movie.draw(0,0);
         for(int i = 0; i < contourFinder.size(); i++) {
             unsigned int label = contourFinder.getLabel(i);
@@ -273,54 +313,96 @@ void ofApp::draw(){
                 ofVec2f currentPosition(current.x + current.width / 2, current.y + current.height / 2);
                 ofDrawLine(previousPosition, currentPosition);
             }
+            
+            // Proximity Check
+            
+            float circleRadius;
+            ofVec2f circleCenter = toOf(contourFinder.getMinEnclosingCircle(i, circleRadius));
+            
+            for(int j = 0; j<contourFinder.size(); j++){
+                ofPoint centerProximity = toOf(contourFinder.getCenter(j));
+                
+                float circleProximityRadius;
+                ofVec2f circleProximityCenter = toOf(contourFinder.getMinEnclosingCircle(j, circleProximityRadius));
+                float distance = center.distance(circleProximityCenter);
+                
+                if(distance < circleRadius + circleProximityRadius + proximity && i != j){
+                    float midX = (center.x+circleProximityCenter.x)/2;
+                    float midY = (center.y+circleProximityCenter.y)/2;
+                    ofSetColor(magentaPrint);
+                    ofNoFill();
+                    ofDrawCircle(midX, midY, distance);
+                    //string location = ofToString(i) + ":" + ofToString(j);
+                    ofSetColor(255);
+                    myFont.drawString("Proximity", midX, midY);
+                    ofSetColor(255);
+                }
+            }
+            //Proximity Check End
         }
-    }
-
-    
-    //Quads
-    ofNoFill();
-    ofSetColor(magentaPrint);
-    for(int i = 0; i < quads.size(); i++) {
-        //ofDrawBitmapString(ofToString(quads[i]), 20, 60+20*i);
-        toOf(quads[i]).draw();
-        float small = 0;
-        ofPoint smallPoint;
-        ofPolyline quadAngles(toOf(quads[i]));
-        for(int j=0; j<4; j++){
-            string msg = ofToString(i)+":"+ofToString(j)+":"+ofToString(quadAngles.getRadiansAtIndex(j));
-            ofDrawBitmapString(msg, 20+100*j, 60+20*i);
-            //ofDrawBitmapString(msg, quadAngles.getPointAtIndexInterpolated(j));
-
+        
+        //Quads
+        ofNoFill();
+        for(int i = 0; i < quads.size(); i++) {
+            //ofDrawBitmapString(ofToString(quads[i]), 20, 60+20*i);
+            toOf(quads[i]).draw();
+            float small = 0;
+            ofPoint smallPoint;
+            ofPolyline quadAngles(toOf(quads[i]));
+            for(int j=0; j<4; j++){
+                string msg = ofToString(i)+":"+ofToString(j)+":"+ofToString(quadAngles.getRadiansAtIndex(j));
+                ofDrawBitmapString(msg, 20+100*j, 60+20*i);
+                //ofDrawBitmapString(msg, quadAngles.getPointAtIndexInterpolated(j));
+                
                 if(quadAngles.getRadiansAtIndex(j)>small){
                     small = quadAngles.getRadiansAtIndex(j);
                     smallPoint = quadAngles.getPointAtIndexInterpolated(j);
                 }
+            }
+            if (small > 1.8){
+                ofDrawLine(quadAngles.getCentroid2D(), smallPoint);
+                ofFill();
+                ofDrawCircle(smallPoint,10);
+                ofNoFill();
+                ofPoint dirV = quadAngles.getCentroid2D() - smallPoint;
+                dirV = dirV*-2;
+                ofPushMatrix();
+                ofTranslate(quadAngles.getCentroid2D());
+                ofSetColor(255);
+                myFont.drawString("Orientation", dirV.x, dirV.y);
+                ofPopMatrix();
+                
+            }
+            //        ofPopMatrix();
+            
         }
-        if (small > 1.8){
-            ofDrawLine(quadAngles.getCentroid2D(), smallPoint);
-            ofDrawCircle(smallPoint,4);
-        }
-//        ofPopMatrix();
+        
+        
+        ofSetColor(255);
+        //polyline drawing;
+        ofPolyline shape(contPoints);
+        ofSetLineWidth(2);
+        shape.draw();
+        
     }
-    
-    ofSetColor(255);
-    //polyline drawing;
-    ofPolyline shape(contPoints);
-    ofSetLineWidth(2);
-    shape.draw();
+
+
     
     attractPointsWithMovement.clear();
-    
-    for(int i=0; i< contPoints.size() ;i++){
+
+    for(int i=0; i< contPoints.size(); i++){
         attractPointsWithMovement.push_back(contPoints[i]);
     }
     
     ofDrawBitmapString(ofToString(ofGetFrameRate()), 20, 20);
     ofDrawBitmapString(ofToString(contPoints), 20, 40);
+
     
-    
-    // Gui Draw
-    gui.draw();
+        // Gui Draw
+    if(guiFlag){
+        gui.draw();
+        
+    }
     
     
 }
@@ -332,6 +414,27 @@ void ofApp::keyPressed(int key){
     if(key == ' ') {
         showLabels = !showLabels;
         resetParticles();
+        modeSelector = "0";
+    }
+    
+    if(key == '1') {
+        modeSelector = "1";
+    }
+    
+    if(key == '2') {
+        modeSelector = "2";
+    }
+    
+    if(key == '3') {
+        modeSelector = "3";
+    }
+    
+    if(key == 'p') {
+        guiFlag = !guiFlag;
+    }
+    
+    if(key == 'l') {
+        flowFieldFlag = !flowFieldFlag;
     }
     
     

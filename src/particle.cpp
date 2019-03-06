@@ -20,6 +20,7 @@ void Particle::setAttractPoints( vector <ofPoint> * attract ){
     attractPoints = attract;
 }
 
+
 //------------------------------------------------------------------
 void Particle::reset(){
     //the unique val allows us to set properties slightly differently for each particle
@@ -95,7 +96,7 @@ void Particle::update(){
             vel *= drag;
             
             //lets also limit our attraction to a certain distance and don't apply if 'f' key is pressed
-            if( dist < 150 && dist > 40 && !ofGetKeyPressed('f') ){
+            if( dist < 100 && dist > 40 && !ofGetKeyPressed('f') ){
                 vel -= frc * 0.003;
             }else{
                 //if the particles are not close to us, lets add a little bit of random movement using noise. this is where uniqueVal comes in handy.
@@ -107,6 +108,8 @@ void Particle::update(){
         }
         
     }
+    
+    
     
     
     
@@ -147,6 +150,7 @@ void Particle::edges(){
 void Particle::draw(){
         
     ofSetColor(255);
+    ofFill();
     //ofDrawBitmapString(ofToString(testVal), pos.x, pos.y);
-    ofDrawCircle(pos.x, pos.y, scale * 2.0);
+    ofDrawRectangle(pos.x, pos.y, scale * 5.0 , scale * 5.0);
 }
