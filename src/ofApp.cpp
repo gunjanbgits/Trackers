@@ -40,19 +40,21 @@ void ofApp::setup(){
     gui.add(proximity.set("Proximity", 10, 5, 40));
     
     // Particle GUI
-    gui.add(timeMult.set("timeMult", .12, .005, .5));
-    gui.add(scaleMult.set("ScaleMult", .25, .005, .5));
-    gui.add(radius.set("Radius", .9, .1, 5));
+    gui.add(timeMult.set("timeMult", .02, .005, .5));
+    gui.add(scaleMult.set("ScaleMult", .02, .005, .5));
+    gui.add(radius.set("Radius", .2, .1, 5));
     gui.add(numFrames.set("numFrames", 75, 60, 600));
     //gui.add(gridScale.set("gridScale", 50, 20, 80));
-    gui.add(vScale.set("vScale", 0.01, 0.01, .5));
+    gui.add(vScale.set("vScale", 0.1, 0.1, 1));
     
     //Load Movie
     
 //    movie.load("keys2.mov");
 //    movie.play();
-//
+    
+    
     //CAM FEED
+    
     movie.setDeviceID(1);
     movie.setup(1280, 768);
 
@@ -68,10 +70,11 @@ void ofApp::setup(){
     showLabels = true;
     
     //Particle Setup
-    cols = 32;//round(width / gridScale);
-    rows = 22;//round(height / gridScale);
+    cols = 64;//round(width / gridScale);
+    rows = 42;//round(height / gridScale);
     
     null.set(0,0);
+    contPoints.push_back(null);
     
     flowField.resize(rows*cols);
     
@@ -90,11 +93,7 @@ void ofApp::setup(){
 void ofApp::resetParticles(){
     
     attractPoints.clear();
-//    for(int i = 0; i < 4; i++){
-//        attractPoints.push_back( ofPoint( ofMap(i, 0, 4, 100, ofGetWidth()-100) , ofRandom(100, ofGetHeight()-100) ) );
-//    }
-    
-    attractPointsWithMovement = contPoints;
+    attractPointsWithMovement.clear();
     
     for(unsigned int i = 0; i < p.size(); i++){
         p[i].setAttractPoints(&attractPointsWithMovement);
@@ -102,23 +101,69 @@ void ofApp::resetParticles(){
     }
 }
 
+
+//--------------------------------------------------------------
+// Create Flow Field
+
+void ofApp::createFlowField(){
+    
+    // Flow Field Setup Area !!
+    float t = timeMult*ofGetFrameNum()/numFrames;
+    //int t = 1;
+    for (int y = 0; y < rows; y++){
+        for (int x = 0; x < cols; x++){
+            int index = x + y * cols;
+//            float noiseF = ofMap(ofNoise(scaleMult*x,scaleMult*y,t),0,1,0,1);
+//            float noiseF2 = ofMap(ofNoise(scaleMult*x,scaleMult*y,t),0,1,-1,1);
+            
+            float nsFactor2 = ofMap(ofNoise(scaleMult*x,scaleMult*y,radius*cos(TWO_PI*t),radius*sin(TWO_PI*t)),0,1,-25,25);
+            float nsFactor2a = ofMap(ofNoise(200+scaleMult*x,scaleMult*y,radius*cos(TWO_PI*t),radius*sin(TWO_PI*t)),0,1,0,1);
+            float l = glm::sqrt(glm::pow(20,2)+glm::pow(20,2));
+            float vx = l*cos(nsFactor2);
+            float vy = l*sin(nsFactor2);
+            float intensity = 0.1+1.5 * ease(nsFactor2a,3.5); //0.5 + 1.5 * ease(noiseF2,3.5);
+            vx*=intensity;
+            vy*=intensity;
+            ofPoint flow;
+            flow.x = vx;
+            flow.y = vy;
+            flow.limit(vScale);
+            //flow.normalize();
+            flowField[index] = flow;
+            ofPushMatrix();
+            ofTranslate(x+x*20, y+y*20);
+            ofSetColor(55);
+            ofDrawLine(0,0,vx,vy);
+            //ofDrawBitmapString(ofToString(noiseF), 0, 0);
+            ofPopMatrix();
+        }
+    }
+}
+
+//--------------------------------------------------------------
+// Draw Particles
+
+void ofApp::drawParticles(){
+    
+    ofSetColor(255, 127);
+    
+    for(unsigned int i = 0; i < p.size(); i++){
+        
+        p[i].follow(flowField, 40, cols);
+        p[i].update();
+        p[i].draw();
+        p[i].edges();
+    }
+}
+
+
 //--------------------------------------------------------------
 void ofApp::update(){
     
     contPoints.clear();
     
-    // Flow Fields Setup
-    
-//    cols = round(width / gridScale);
-//    rows = round(height / gridScale);
-    
-    // ------------------
-    
-    
     // Contour FInder Setup Area !!
-    
-    // Video Frames Updates
-    //movie.update();
+
     movie.update();
     if(movie.isFrameNew()) {
         blur(movie, 10);
@@ -126,6 +171,7 @@ void ofApp::update(){
         contourFinder.setMaxAreaRadius(maxArea);
         contourFinder.setThreshold(threshold);
         contourFinder.findContours(movie);
+        contourFinder.setSortBySize(true);
         contourFinder.setSimplify(true);
         contourFinder.setFindHoles(holes);
         
@@ -145,49 +191,6 @@ void ofApp::update(){
 //--------------------------------------------------------------
 void ofApp::draw(){
     
-    
-    // Flow Field Setup Area !!
-    float t = timeMult*ofGetFrameNum()/numFrames;
-    //int t = 1;
-    for (int y = 0; y < rows; y++){
-        for (int x = 0; x < cols; x++){
-            int index = x + y * cols;
-            float noiseF = ofMap(ofNoise(scaleMult*x,scaleMult*y,t),0,1,0,1);
-            float noiseF2 = ofMap(ofNoise(scaleMult*x,scaleMult*y,t),0,1,-1,1);
-            
-            float vx = 40*cos(noiseF);
-            float vy = 40*sin(noiseF);
-            float intensity = noiseF2; //0.5 + 1.5 * ease(noiseF2,3.5);
-            vx*=intensity;
-            vy*=intensity;
-            ofPoint flow;
-            flow.x = vx;
-            flow.y = vy;
-            flow.limit(vScale);
-            //flow.normalize();
-            flowField[index] = flow;
-            ofPushMatrix();
-            ofTranslate(x+x*40, y+y*40);
-            ofSetColor(55);
-            ofDrawLine(0,0,vx,vy);
-            //ofDrawBitmapString(ofToString(noiseF), 0, 0);
-            ofPopMatrix();
-        }
-    }
-    
-    
-    // Particle Drawing Area !!
-    
-    ofSetColor(255, 127);
-    
-    for(unsigned int i = 0; i < p.size(); i++){
-        
-        p[i].follow(flowField, 40, cols);
-        p[i].update();
-        p[i].draw();
-        p[i].edges();
-    }
-    
     // Countour Finder Area !!
     
     ofSetBackgroundAuto(showLabels);
@@ -195,16 +198,22 @@ void ofApp::draw(){
     
 
     if(showLabels) {
+        createFlowField();
+        drawParticles();
         ofSetColor(255);
         //movie.draw(0,0);
         ofDrawLine(10, 10, 100, 10);
         //movie.draw(0,0, 1280, 768);
         contourFinder.draw();
         for(int i = 0; i < contourFinder.size(); i++) {
-            ofPoint center = toOf(contourFinder.getCenter(i));
+            
+            ofPoint center = toOf(contourFinder.getCenter(i));  // Get Centers of the Shape
+            contPoints.push_back(center);
+            
             
             float circleRadius;
             ofVec2f circleCenter = toOf(contourFinder.getMinEnclosingCircle(i, circleRadius));
+
             //ofDrawCircle(circleCenter, circleRadius);
             
             ofPushMatrix();
@@ -216,7 +225,6 @@ void ofApp::draw(){
             ofScale(5, 5);
             ofDrawLine(0, 0, velocity.x, velocity.y);
             ofPopMatrix();
-            contPoints.push_back(center);
             
             // Proximity Check
                 for(int j = 0; j<contourFinder.size(); j++){
@@ -244,9 +252,14 @@ void ofApp::draw(){
         }
     else {
         ofSetColor(255);
-        movie.draw(0,0);
+        ofBackground(0);
+        // movie.draw(0,0);
         for(int i = 0; i < contourFinder.size(); i++) {
             unsigned int label = contourFinder.getLabel(i);
+            
+            ofPoint center = toOf(contourFinder.getCenter(i));  // Get Centers of the Shape
+            contPoints.push_back(center);
+            
             // only draw a line if this is not a new label
             if(tracker.existsPrevious(label)) {
                 // use the label to pick a random color
@@ -268,42 +281,44 @@ void ofApp::draw(){
     ofNoFill();
     ofSetColor(magentaPrint);
     for(int i = 0; i < quads.size(); i++) {
+        //ofDrawBitmapString(ofToString(quads[i]), 20, 60+20*i);
         toOf(quads[i]).draw();
+        float small = 0;
+        ofPoint smallPoint;
+        ofPolyline quadAngles(toOf(quads[i]));
+        for(int j=0; j<4; j++){
+            string msg = ofToString(i)+":"+ofToString(j)+":"+ofToString(quadAngles.getRadiansAtIndex(j));
+            ofDrawBitmapString(msg, 20+100*j, 60+20*i);
+            //ofDrawBitmapString(msg, quadAngles.getPointAtIndexInterpolated(j));
+
+                if(quadAngles.getRadiansAtIndex(j)>small){
+                    small = quadAngles.getRadiansAtIndex(j);
+                    smallPoint = quadAngles.getPointAtIndexInterpolated(j);
+                }
+        }
+        if (small > 1.8){
+            ofDrawLine(quadAngles.getCentroid2D(), smallPoint);
+            ofDrawCircle(smallPoint,4);
+        }
+//        ofPopMatrix();
     }
     
     ofSetColor(255);
-    //polyline drawing
-    //ofPolyline shape(contPoints);
+    //polyline drawing;
+    ofPolyline shape(contPoints);
     ofSetLineWidth(2);
-    //shape.draw();
+    shape.draw();
     
+    attractPointsWithMovement.clear();
     
-   
-    /*
-    // Node Drawing Array object Creation and Destruction
-    
-    myNodes.clear();
-    for (int i = 0; i<contourFinder.size(); i++){
-        float circleRadius;
-        ofVec2f circleCenter = toOf(contourFinder.getMinEnclosingCircle(i, circleRadius));
-        Node myNode;
-        myNode.setup(circleCenter, circleRadius, fieldOfGlow);
-        myNodes.push_back(myNode);
+    for(int i=0; i< contPoints.size() ;i++){
+        attractPointsWithMovement.push_back(contPoints[i]);
     }
-    
-    for(int i = 0; i<myNodes.size(); i++){
-        myNodes[i].draw();
-    }
-    */
-    
-    
-    // Particle Drawing Area
-    
-    
-    
-    attractPointsWithMovement = contPoints;
     
     ofDrawBitmapString(ofToString(ofGetFrameRate()), 20, 20);
+    ofDrawBitmapString(ofToString(contPoints), 20, 40);
+    
+    
     // Gui Draw
     gui.draw();
     
@@ -322,3 +337,22 @@ void ofApp::keyPressed(int key){
     
 }
 
+
+
+
+/*
+ // Node Drawing Array object Creation and Destruction
+ 
+ myNodes.clear();
+ for (int i = 0; i<contourFinder.size(); i++){
+ float circleRadius;
+ ofVec2f circleCenter = toOf(contourFinder.getMinEnclosingCircle(i, circleRadius));
+ Node myNode;
+ myNode.setup(circleCenter, circleRadius, fieldOfGlow);
+ myNodes.push_back(myNode);
+ }
+ 
+ for(int i = 0; i<myNodes.size(); i++){
+ myNodes[i].draw();
+ }
+ */

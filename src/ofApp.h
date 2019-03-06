@@ -15,6 +15,8 @@ class ofApp : public ofBaseApp{
 		void update();
 		void draw();
         void resetParticles();
+        void createFlowField();
+        void drawParticles();
 		void keyPressed(int key);
     
     
@@ -25,7 +27,7 @@ class ofApp : public ofBaseApp{
         vector< vector<cv::Point> > quads;
         vector<int> sides;
         bool showLabels;
-        vector<ofPoint> contPoints;
+        vector <glm::vec3> contPoints;
     
     
         ofxPanel gui;

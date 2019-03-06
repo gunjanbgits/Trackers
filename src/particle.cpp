@@ -28,8 +28,12 @@ void Particle::reset(){
     pos.x = ofRandom(0,1280);
     pos.y = ofRandom(0,800);
     
-    vel.x = ofRandom(-1,1);
-    vel.y = ofRandom(-1,1);
+//    vel.x = ofRandom(-1,1);
+//    vel.y = ofRandom(-1,1);
+
+    vel.x = 0;
+    vel.y = 0;
+    
     
     acc   = ofPoint(0,0);
     
@@ -53,7 +57,7 @@ void Particle::follow(vector<ofPoint> _flowField, int _gridScale, int _cols){
 }
 
 void Particle::applyForce(ofPoint force){
-    acc += force*0.6;
+    acc += force;
     //acc.normalize();
 }
 
@@ -109,15 +113,15 @@ void Particle::update(){
     
     
     vel *= drag; //apply drag
-    vel += acc*0.019; //apply force
+    vel += acc*0.029; //apply force
 
     //2 - UPDATE OUR POSITION
     
     pos += vel;
     
-    //acc*=0.1;
+    acc*=.91;
     
-    vel.limit(1);
+    vel.limit(0.5);
     
 }
 
